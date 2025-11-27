@@ -1,0 +1,12 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlmodel==0.0.14
+psycopg2-binary==2.9.9
+alembic==1.13.0
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Development dependencies
+pre-commit==3.6.0
+ruff==0.1.9

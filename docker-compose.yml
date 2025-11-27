@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ace-checkin-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-ace_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ace_password}
+      POSTGRES_DB: ${DB_NAME:-ace_checkin}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ace_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ace-network
+
+  app:
+    build: .
+    container_name: ace-checkin-app
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-ace_user}:${DB_PASSWORD:-ace_password}@db:5432/${DB_NAME:-ace_checkin}
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "sleep 5 && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - ace-network
+    restart: on-failure
+
+  nginx:
+    image: nginx:alpine
+    container_name: ace-checkin-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - ace-network
+
+volumes:
+  postgres_data:
+
+networks:
+  ace-network:
+    driver: bridge
