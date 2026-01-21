@@ -1,15 +1,18 @@
-# Pre-commit hooks configuration
+# Pre-commit hooks configuration for monorepo
 # Install: pre-commit install
 # Run manually: pre-commit run --all-files
 
 repos:
-  # Ruff - Fast Python linter and formatter
+  # Ruff - Fast Python linter and formatter (server only)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.1.9
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        args: [--fix, --exit-non-zero-on-fix, --config, server/ruff.toml]
+        files: ^server/
       - id: ruff-format
+        args: [--config, server/ruff.toml]
+        files: ^server/
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

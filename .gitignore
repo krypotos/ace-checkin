@@ -4,51 +4,48 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
+.venv/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+env/
+.env
 *.egg-info/
-.installed.cfg
-*.egg
-pip-log.txt
-pip-delete-this-directory.txt
+dist/
+build/
+.ruff_cache/
 
-# IDE
-.vscode/
+# IDEs
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
-.DS_Store
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Database
-*.db
-*.sqlite
-
-# Docker
-.dockerignore
-
-# Alembic
-alembic/versions/__pycache__/
+.cursor/
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Server specific
+server/.env
+
+# Mobile client (React Native / Expo)
+mobile-client/node_modules/
+mobile-client/.expo/
+mobile-client/dist/
+mobile-client/web-build/
+mobile-client/*.jks
+mobile-client/*.p8
+mobile-client/*.p12
+mobile-client/*.key
+mobile-client/*.mobileprovision
+mobile-client/*.orig.*
+mobile-client/.env.local
+mobile-client/.env.*.local
