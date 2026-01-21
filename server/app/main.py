@@ -19,7 +19,7 @@ from app.schemas import (
 app = FastAPI(
     title="Ace Check-in API",
     description="Tennis club member check-in and payment tracking system for mobile app",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 # Add CORS middleware - configured for mobile app access
@@ -151,11 +151,13 @@ async def log_payment(payment: PaymentCheckIn, session: Session = Depends(get_se
     Mobile app workflow:
     1. Scan barcode → get member_id
     2. (Optional) Call GET /api/members/{member_id} to show member name
-    3. User enters amount
+    3. User enters amount (0.01 to 1000.00, max 2 decimal places)
     4. User confirms → POST /api/payment with member_id and amount
     5. Show success with returned details
 
-    Note: Amount is in dollars (e.g., 25.50), stored as cents internally.
+    Validation:
+    - amount must be > 0 and <= 1000
+    - amount must have at most 2 decimal places
     """
     # Verify member exists
     member = session.query(Member).filter(Member.id == payment.member_id).first()
@@ -165,11 +167,12 @@ async def log_payment(payment: PaymentCheckIn, session: Session = Depends(get_se
             detail=f"Member with ID {payment.member_id} not found",
         )
 
-    # Convert amount to cents (integer) for storage
-    amount_cents = int(payment.amount * 100)
-
-    # Create payment log
-    payment_log = PaymentLog(member_id=payment.member_id, amount=amount_cents, notes=payment.notes)
+    # Create payment log (amount is already validated by schema)
+    payment_log = PaymentLog(
+        member_id=payment.member_id,
+        amount=payment.amount,  # Stored as DECIMAL(10,2)
+        notes=payment.notes,
+    )
     session.add(payment_log)
     session.commit()
     session.refresh(payment_log)
@@ -179,10 +182,10 @@ async def log_payment(payment: PaymentCheckIn, session: Session = Depends(get_se
         id=payment_log.id,
         member_id=payment_log.member_id,
         member_name=member.name,
-        amount=payment.amount,  # Return original dollar amount
+        amount=payment_log.amount,
         timestamp=payment_log.timestamp,
         notes=payment_log.notes,
-        message=f"Payment of ${payment.amount:.2f} logged for {member.name}",
+        message=f"Payment of ${payment_log.amount:.2f} logged for {member.name}",
     )
 
 
@@ -206,25 +209,25 @@ async def get_member_payments(
         .all()
     )
 
-    # Convert amounts from cents to dollars in response
+    # Build response with amounts as-is (already stored as decimal)
     payments_response = [
         {
             "id": p.id,
             "member_id": p.member_id,
-            "amount": p.amount / 100,  # Convert to dollars
+            "amount": float(p.amount),
             "timestamp": p.timestamp,
             "notes": p.notes,
         }
         for p in payments
     ]
 
-    total_cents = sum(p.amount for p in payments)
+    total_amount = sum(p.amount for p in payments)
 
     return {
         "member_id": member_id,
         "member_name": member.name,
         "total_payments": len(payments),
-        "total_amount": total_cents / 100,
+        "total_amount": float(total_amount),
         "payments": payments_response,
     }
 
@@ -245,7 +248,7 @@ async def get_member_summary(member_id: int, session: Session = Depends(get_sess
     entries = session.query(EntryLog).filter(EntryLog.member_id == member_id).all()
     payments = session.query(PaymentLog).filter(PaymentLog.member_id == member_id).all()
 
-    total_cents = sum(p.amount for p in payments)
+    total_amount = sum(p.amount for p in payments)
     last_entry = max((e.timestamp for e in entries), default=None)
     last_payment = max((p.timestamp for p in payments), default=None)
 
@@ -260,7 +263,7 @@ async def get_member_summary(member_id: int, session: Session = Depends(get_sess
         "stats": {
             "total_entries": len(entries),
             "total_payments": len(payments),
-            "total_amount_paid": total_cents / 100,
+            "total_amount_paid": float(total_amount),
             "last_entry": last_entry,
             "last_payment": last_payment,
         },

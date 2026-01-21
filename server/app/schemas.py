@@ -1,7 +1,8 @@
 """Pydantic schemas for API requests and responses"""
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ==================== Member Schemas ====================
 
@@ -65,8 +66,28 @@ class PaymentCheckIn(BaseModel):
     """Schema for payment request from mobile app"""
 
     member_id: int = Field(..., gt=0, description="Member ID from scanned barcode")
-    amount: float = Field(..., gt=0, description="Payment amount in dollars (e.g., 25.50)")
+    amount: Decimal = Field(
+        ...,
+        gt=0,
+        le=1000,
+        description="Payment amount in dollars (0.01 to 1000.00, max 2 decimal places)",
+    )
     notes: str | None = Field(None, max_length=255, description="Optional payment notes")
+
+    @field_validator("amount")
+    @classmethod
+    def validate_decimal_places(cls, v: Decimal) -> Decimal:
+        """Ensure amount has at most 2 decimal places"""
+        try:
+            # Convert to Decimal if not already
+            decimal_value = Decimal(str(v))
+            # Check decimal places by quantizing
+            quantized = decimal_value.quantize(Decimal("0.01"))
+            if decimal_value != quantized:
+                raise ValueError("Amount must have at most 2 decimal places")
+            return quantized
+        except InvalidOperation as e:
+            raise ValueError(f"Invalid decimal value: {e}") from e
 
 
 class PaymentResponse(BaseModel):
@@ -77,7 +98,7 @@ class PaymentResponse(BaseModel):
     id: int
     member_id: int
     member_name: str
-    amount: float  # Amount in dollars
+    amount: Decimal  # Amount in dollars
     timestamp: datetime
     notes: str | None = None
     message: str  # Human-readable confirmation message
