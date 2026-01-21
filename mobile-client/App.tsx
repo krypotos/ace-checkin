@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -19,6 +19,46 @@ import type { Member, EntryResponse, PaymentResponse } from './src/types';
 type Screen = 'home' | 'scanner' | 'confirm' | 'success';
 type ScanMode = 'entry' | 'payment';
 
+// Payment validation constants (must match backend)
+const MIN_AMOUNT = 0.01;
+const MAX_AMOUNT = 1000;
+const MAX_DECIMAL_PLACES = 2;
+
+/**
+ * Validates payment amount
+ * Returns error message or null if valid
+ */
+function validatePaymentAmount(value: string): string | null {
+  // Check if empty
+  if (!value || value.trim() === '') {
+    return 'Please enter an amount';
+  }
+
+  // Check if valid number
+  const amount = parseFloat(value);
+  if (isNaN(amount)) {
+    return 'Please enter a valid number';
+  }
+
+  // Check minimum
+  if (amount < MIN_AMOUNT) {
+    return `Amount must be at least $${MIN_AMOUNT.toFixed(2)}`;
+  }
+
+  // Check maximum
+  if (amount > MAX_AMOUNT) {
+    return `Amount cannot exceed $${MAX_AMOUNT.toFixed(2)}`;
+  }
+
+  // Check decimal places
+  const decimalPart = value.split('.')[1];
+  if (decimalPart && decimalPart.length > MAX_DECIMAL_PLACES) {
+    return 'Amount can have at most 2 decimal places';
+  }
+
+  return null;
+}
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [scanMode, setScanMode] = useState<ScanMode>('entry');
@@ -35,6 +75,23 @@ export default function App() {
   // Success state
   const [successMessage, setSuccessMessage] = useState('');
   const [successDetails, setSuccessDetails] = useState('');
+
+  // Validate payment amount in real-time
+  const amountValidationError = useMemo(() => {
+    if (scanMode !== 'payment' || paymentAmount === '') {
+      return null;
+    }
+    return validatePaymentAmount(paymentAmount);
+  }, [paymentAmount, scanMode]);
+
+  // Check if confirm button should be enabled
+  const isConfirmEnabled = useMemo(() => {
+    if (scanMode === 'entry') {
+      return true;
+    }
+    // For payments, amount must be valid
+    return paymentAmount !== '' && validatePaymentAmount(paymentAmount) === null;
+  }, [scanMode, paymentAmount]);
 
   // Check API health on mount
   useEffect(() => {
@@ -85,6 +142,15 @@ export default function App() {
   const handleConfirm = async () => {
     if (!member) return;
 
+    // Double-check validation for payments
+    if (scanMode === 'payment') {
+      const validationError = validatePaymentAmount(paymentAmount);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -97,11 +163,6 @@ export default function App() {
         setSuccessDetails(new Date(response.timestamp).toLocaleString());
       } else {
         const amount = parseFloat(paymentAmount);
-        if (isNaN(amount) || amount <= 0) {
-          setError('Please enter a valid amount');
-          setIsLoading(false);
-          return;
-        }
         const response: PaymentResponse = await api.logPayment({
           member_id: member.id,
           amount: amount,
@@ -181,7 +242,10 @@ export default function App() {
           {scanMode === 'payment' && (
             <View style={styles.amountContainer}>
               <Text style={styles.amountLabel}>Payment Amount</Text>
-              <View style={styles.amountInputContainer}>
+              <View style={[
+                styles.amountInputContainer,
+                amountValidationError && styles.amountInputError
+              ]}>
                 <Text style={styles.currencySymbol}>$</Text>
                 <TextInput
                   style={styles.amountInput}
@@ -191,8 +255,15 @@ export default function App() {
                   placeholderTextColor="#64748B"
                   keyboardType="decimal-pad"
                   autoFocus
+                  maxLength={10}
                 />
               </View>
+              <Text style={styles.amountHint}>
+                Enter amount between $0.01 and $1,000.00
+              </Text>
+              {amountValidationError && (
+                <Text style={styles.amountErrorText}>{amountValidationError}</Text>
+              )}
             </View>
           )}
 
@@ -204,10 +275,18 @@ export default function App() {
 
           <View style={styles.confirmActions}>
             <TouchableOpacity
-              style={[styles.confirmButton, styles.confirmButtonPrimary]}
+              style={[
+                styles.confirmButton,
+                styles.confirmButtonPrimary,
+                !isConfirmEnabled && styles.confirmButtonDisabled
+              ]}
               onPress={handleConfirm}
+              disabled={!isConfirmEnabled}
             >
-              <Text style={styles.confirmButtonText}>
+              <Text style={[
+                styles.confirmButtonText,
+                !isConfirmEnabled && styles.confirmButtonTextDisabled
+              ]}>
                 {scanMode === 'entry' ? 'Check In' : 'Record Payment'}
               </Text>
             </TouchableOpacity>
@@ -440,6 +519,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  amountInputError: {
+    borderColor: '#DC2626',
   },
   currencySymbol: {
     fontSize: 32,
@@ -453,6 +537,18 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     minWidth: 120,
     textAlign: 'center',
+  },
+  amountHint: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  amountErrorText: {
+    fontSize: 14,
+    color: '#F87171',
+    textAlign: 'center',
+    marginTop: 8,
   },
   errorContainer: {
     marginHorizontal: 24,
@@ -480,6 +576,9 @@ const styles = StyleSheet.create({
   confirmButtonPrimary: {
     backgroundColor: '#10B981',
   },
+  confirmButtonDisabled: {
+    backgroundColor: '#374151',
+  },
   confirmButtonSecondary: {
     backgroundColor: '#374151',
   },
@@ -487,6 +586,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  confirmButtonTextDisabled: {
+    color: '#6B7280',
   },
   confirmButtonTextSecondary: {
     color: '#D1D5DB',
