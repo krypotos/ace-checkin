@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ace-checkin-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-ace_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-ace_checkin}
+    # Database not exposed externally - only accessible within Docker network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ace_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ace-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  app:
+    build: .
+    container_name: ace-checkin-app
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-ace_user}:${DB_PASSWORD}@db:5432/${DB_NAME:-ace_checkin}
+      ENVIRONMENT: production
+      API_KEY: ${API_KEY}
+    # App not exposed externally - nginx handles external traffic
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "sleep 5 && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    networks:
+      - ace-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  nginx:
+    image: nginx:alpine
+    container_name: ace-checkin-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - ace-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+
+volumes:
+  postgres_data:
+
+networks:
+  ace-network:
+    driver: bridge

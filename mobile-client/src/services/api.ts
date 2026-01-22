@@ -18,12 +18,20 @@ class ApiService {
   ): Promise<T> {
     const url = apiUrl(endpoint);
 
+    // Build headers with API key authentication
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    // Add API key if configured (required in production)
+    if (API_CONFIG.apiKey) {
+      (headers as Record<string, string>)['X-API-Key'] = API_CONFIG.apiKey;
+    }
+
     const config: RequestInit = {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     };
 
     try {
@@ -143,6 +151,10 @@ export class ApiServiceError extends Error {
 
   get isTimeout(): boolean {
     return this.statusCode === 408;
+  }
+
+  get isUnauthorized(): boolean {
+    return this.statusCode === 401;
   }
 }
 

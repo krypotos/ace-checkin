@@ -3,6 +3,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from app.auth import verify_api_key
 from app.config import settings
 from app.database import get_session
 from app.models import EntryLog, Member, PaymentLog
@@ -42,7 +43,11 @@ async def health_check():
 
 
 @app.post("/api/members", response_model=MemberResponse, tags=["Members"])
-async def create_member(member: MemberCreate, session: Session = Depends(get_session)):
+async def create_member(
+    member: MemberCreate,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """Create a new member"""
     db_member = Member(**member.model_dump())
     session.add(db_member)
@@ -52,7 +57,11 @@ async def create_member(member: MemberCreate, session: Session = Depends(get_ses
 
 
 @app.get("/api/members/{member_id}", response_model=MemberResponse, tags=["Members"])
-async def get_member(member_id: int, session: Session = Depends(get_session)):
+async def get_member(
+    member_id: int,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """
     Get member details by ID
 
@@ -68,7 +77,12 @@ async def get_member(member_id: int, session: Session = Depends(get_session)):
 
 
 @app.get("/api/members", response_model=list[MemberResponse], tags=["Members"])
-async def list_members(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+async def list_members(
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """List all members with pagination"""
     members = session.query(Member).offset(skip).limit(limit).all()
     return members
@@ -78,7 +92,11 @@ async def list_members(skip: int = 0, limit: int = 100, session: Session = Depen
 
 
 @app.post("/api/entry", response_model=EntryResponse, tags=["Entry"])
-async def log_entry(entry: EntryCheckIn, session: Session = Depends(get_session)):
+async def log_entry(
+    entry: EntryCheckIn,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """
     Log a member entry to the court
 
@@ -115,7 +133,11 @@ async def log_entry(entry: EntryCheckIn, session: Session = Depends(get_session)
 
 @app.get("/api/entries/{member_id}", tags=["Entry"])
 async def get_member_entries(
-    member_id: int, skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
+    member_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
 ):
     """Get entry history for a member"""
     member = session.query(Member).filter(Member.id == member_id).first()
@@ -144,7 +166,11 @@ async def get_member_entries(
 
 
 @app.post("/api/payment", response_model=PaymentResponse, tags=["Payment"])
-async def log_payment(payment: PaymentCheckIn, session: Session = Depends(get_session)):
+async def log_payment(
+    payment: PaymentCheckIn,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """
     Log a member payment
 
@@ -191,7 +217,11 @@ async def log_payment(payment: PaymentCheckIn, session: Session = Depends(get_se
 
 @app.get("/api/payments/{member_id}", tags=["Payment"])
 async def get_member_payments(
-    member_id: int, skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
+    member_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
 ):
     """Get payment history for a member"""
     member = session.query(Member).filter(Member.id == member_id).first()
@@ -233,7 +263,11 @@ async def get_member_payments(
 
 
 @app.get("/api/member/{member_id}/summary", tags=["Summary"])
-async def get_member_summary(member_id: int, session: Session = Depends(get_session)):
+async def get_member_summary(
+    member_id: int,
+    session: Session = Depends(get_session),
+    _: str = Depends(verify_api_key),
+):
     """
     Get complete summary for a member - entries and payments
 

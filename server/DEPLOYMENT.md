@@ -79,18 +79,23 @@ cd /opt/ace-checkin
 git clone <your-repo-url> .
 # Or if no git: download and extract the files
 
-# Create .env file with secure values
-cat > .env << 'EOF'
-DB_USER=ace_user
-DB_PASSWORD=$(openssl rand -base64 32)
-DB_NAME=ace_checkin
-DB_HOST=db
-DB_PORT=5432
-ENVIRONMENT=production
-EOF
+# Copy environment template and generate secure values
+cd server
+cp env.production.example .env
 
-# Verify .env was created
+# Generate secure database password (hex to avoid special chars)
+DB_PASS=$(openssl rand -hex 32)
+sed -i "s/CHANGE_ME_USE_STRONG_PASSWORD/$DB_PASS/" .env
+
+# Generate secure API key for mobile app authentication
+API_KEY=$(openssl rand -hex 32)
+sed -i "s/CHANGE_ME_GENERATE_SECURE_KEY/$API_KEY/" .env
+
+# Verify .env was created (save the API_KEY for mobile app config!)
 cat .env
+echo ""
+echo "=== IMPORTANT: Save your API_KEY for mobile app configuration ==="
+echo "API_KEY: $API_KEY"
 ```
 
 ## Step 6: Configure Nginx with SSL
@@ -161,32 +166,32 @@ server {
 ## Step 8: Start the Application
 
 ```bash
-cd /opt/ace-checkin
+cd /opt/ace-checkin/server
 
-# Build and start services
-docker-compose up -d
+# Build and start services (using production compose file)
+docker compose -f docker-compose.prod.yml up -d
 
 # Check status
-docker-compose ps
+docker compose -f docker-compose.prod.yml ps
 
 # View logs
-docker-compose logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Check app specifically
-docker-compose logs app
+docker compose -f docker-compose.prod.yml logs app
 ```
 
 ## Step 9: Run Initial Setup
 
 ```bash
-# Create database tables and run migrations
-docker-compose exec app alembic upgrade head
+# Create database tables and run migrations (already done on startup, but can run manually)
+docker compose -f docker-compose.prod.yml exec app alembic upgrade head
 
 # Verify database connection
-docker-compose exec app python3 -c "from app.database import engine; engine.connect(); print('Database connected!')"
+docker compose -f docker-compose.prod.yml exec app python3 -c "from app.database import engine; engine.connect(); print('Database connected!')"
 
 # Create a test member
-docker-compose exec app python3 << 'EOF'
+docker compose -f docker-compose.prod.yml exec app python3 << 'EOF'
 from app.database import SessionLocal
 from app.models import Member
 from datetime import datetime
@@ -213,8 +218,9 @@ BACKUP_DIR="/opt/ace-checkin/backups"
 mkdir -p $BACKUP_DIR
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# Backup database
-docker-compose exec -T db pg_dump -U ace_user ace_checkin > \
+# Backup database (using production compose file)
+cd /opt/ace-checkin/server
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U ace_user ace_checkin > \
   $BACKUP_DIR/ace_checkin_$TIMESTAMP.sql
 
 # Keep only last 7 days
@@ -227,20 +233,22 @@ chmod +x /opt/ace-checkin/backup.sh
 
 # Add to crontab for daily backups at 2 AM
 crontab -e
-# Add line: 0 2 * * * cd /opt/ace-checkin && ./backup.sh
+# Add line: 0 2 * * * /opt/ace-checkin/backup.sh
 ```
 
 ## Step 11: Set Up Monitoring and Logs
 
 ```bash
+cd /opt/ace-checkin/server
+
 # View real-time logs
-docker-compose logs -f app
+docker compose -f docker-compose.prod.yml logs -f app
 
 # View specific container
-docker-compose logs app --tail=100
+docker compose -f docker-compose.prod.yml logs app --tail=100
 
 # Save logs to file
-docker-compose logs > app_logs.txt
+docker compose -f docker-compose.prod.yml logs > app_logs.txt
 ```
 
 ## Step 12: Configure Firewall (UFW)
@@ -266,9 +274,9 @@ ufw status
 ## Step 13: Set Up Auto-Renewal for SSL Certificate
 
 ```bash
-# Add cron job for Let's Encrypt renewal
+# Add cron job for Let's Encrypt renewal (only needed if using Let's Encrypt)
 cat > /etc/cron.d/letsencrypt << 'EOF'
-0 3 * * * root certbot renew --quiet && cd /opt/ace-checkin && docker-compose restart nginx
+0 3 * * * root certbot renew --quiet && cd /opt/ace-checkin/server && docker compose -f docker-compose.prod.yml restart nginx
 EOF
 
 # Verify
@@ -307,27 +315,29 @@ curl -X POST https://yourdomain.com/api/entry \
 ### Update Application
 
 ```bash
-cd /opt/ace-checkin
+cd /opt/ace-checkin/server
 
 # Pull latest code
 git pull
 
-# Rebuild and restart
-docker-compose build
-docker-compose up -d
+# Rebuild and restart (using production compose file)
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
 
 # Run migrations if needed
-docker-compose exec app alembic upgrade head
+docker compose -f docker-compose.prod.yml exec app alembic upgrade head
 
 # Check status
-docker-compose ps
+docker compose -f docker-compose.prod.yml ps
 ```
 
 ### Database Operations
 
 ```bash
+cd /opt/ace-checkin/server
+
 # Access PostgreSQL
-docker-compose exec db psql -U ace_user -d ace_checkin
+docker compose -f docker-compose.prod.yml exec db psql -U ace_user -d ace_checkin
 
 # Useful SQL commands:
 # \dt                    - List tables
@@ -364,23 +374,27 @@ openssl s_client -connect yourdomain.com:443
 certbot renew --force-renewal
 
 # Copy to Docker volume
-cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/ace-checkin/nginx/ssl/cert.pem
-cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/ace-checkin/nginx/ssl/key.pem
+cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/ace-checkin/server/nginx/ssl/cert.pem
+cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/ace-checkin/server/nginx/ssl/key.pem
 
 # Restart Nginx
-docker-compose restart nginx
+cd /opt/ace-checkin/server
+docker compose -f docker-compose.prod.yml restart nginx
 ```
 
 ### Issue: Database Connection Issues
 
 ```bash
+cd /opt/ace-checkin/server
+
 # Check database logs
-docker-compose logs db
+docker compose -f docker-compose.prod.yml logs db
 
 # Test connection
-docker-compose exec app python3 << 'EOF'
+docker compose -f docker-compose.prod.yml exec app python3 << 'EOF'
 from sqlalchemy import create_engine
-engine = create_engine('postgresql://ace_user:ace_password@db:5432/ace_checkin')
+import os
+engine = create_engine(os.getenv('DATABASE_URL'))
 connection = engine.connect()
 print("Connected successfully!")
 connection.close()
@@ -390,6 +404,8 @@ EOF
 ### Issue: Out of Disk Space
 
 ```bash
+cd /opt/ace-checkin/server
+
 # Check disk usage
 du -sh *
 
@@ -397,7 +413,7 @@ du -sh *
 docker system prune -a
 
 # Check PostgreSQL data size
-docker-compose exec db du -sh /var/lib/postgresql/data
+docker compose -f docker-compose.prod.yml exec db du -sh /var/lib/postgresql/data
 ```
 
 ### Issue: High Memory Usage
@@ -406,14 +422,8 @@ docker-compose exec db du -sh /var/lib/postgresql/data
 # Check Docker stats
 docker stats
 
-# Adjust Docker Compose resources
-# Edit docker-compose.yml and add:
-# services:
-#   app:
-#     deploy:
-#       resources:
-#         limits:
-#           memory: 512M
+# Note: Memory limits are already configured in docker-compose.prod.yml
+# PostgreSQL: 512MB, App: 256MB, Nginx: 64MB
 ```
 
 ## Scaling Considerations
@@ -487,17 +497,20 @@ systemctl restart docker
 If something goes wrong:
 
 ```bash
+cd /opt/ace-checkin/server
+
 # Stop services
-docker-compose down
+docker compose -f docker-compose.prod.yml down
 
 # Restore from backup
-docker-compose exec -T db psql -U ace_user ace_checkin < backups/ace_checkin_TIMESTAMP.sql
+docker compose -f docker-compose.prod.yml up -d db
+docker compose -f docker-compose.prod.yml exec -T db psql -U ace_user ace_checkin < backups/ace_checkin_TIMESTAMP.sql
 
-# Restart
-docker-compose up -d
+# Restart all services
+docker compose -f docker-compose.prod.yml up -d
 
 # Verify
-docker-compose ps
+docker compose -f docker-compose.prod.yml ps
 ```
 
 ---
@@ -506,5 +519,6 @@ docker-compose ps
 
 For questions or issues, refer to the main README.md or check the logs with:
 ```bash
-docker-compose logs -f
+cd /opt/ace-checkin/server
+docker compose -f docker-compose.prod.yml logs -f
 ```
