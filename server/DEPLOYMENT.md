@@ -37,7 +37,7 @@ If you have a domain name:
 
 2. **Wait for DNS Propagation**
    - Can take 1-24 hours
-   - Check: `nslookup yourdomain.com`
+   - Check: `nslookup acecheckin.com`
 
 ## Step 3: Connect to Your Droplet
 
@@ -107,7 +107,7 @@ echo "API_KEY: $API_KEY"
 apt-get install -y certbot python3-certbot-nginx
 
 # Generate certificate (replace with your domain)
-certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
+certbot certonly --standalone -d acecheckin.com -d www.acecheckin.com
 
 # Note: You may need to temporarily stop Docker for this
 
@@ -115,8 +115,8 @@ certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com
 mkdir -p /opt/ace-checkin/nginx/ssl
 
 # Copy certificates
-cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/ace-checkin/nginx/ssl/cert.pem
-cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/ace-checkin/nginx/ssl/key.pem
+cp /etc/letsencrypt/live/acecheckin.com/fullchain.pem /opt/ace-checkin/server/nginx/ssl/cert.pem
+cp /etc/letsencrypt/live/acecheckin.com/privkey.pem /opt/ace-checkin/server/nginx/ssl/key.pem
 ```
 
 ### Option B: Self-Signed Certificate (Testing Only)
@@ -127,41 +127,20 @@ mkdir -p /opt/ace-checkin/nginx/ssl
 openssl req -x509 -newkey rsa:4096 -nodes \
   -keyout /opt/ace-checkin/nginx/ssl/key.pem \
   -out /opt/ace-checkin/nginx/ssl/cert.pem \
-  -days 365 -subj "/CN=yourdomain.com"
+  -days 365 -subj "/CN=134.209.237.163"
 ```
 
-## Step 7: Update Nginx Configuration
+## Step 7: Nginx Configuration (Already Done)
 
-Edit `nginx/conf.d/default.conf`:
+The production Nginx configuration is pre-configured in `nginx/conf.d/production.conf` with:
+- HTTP to HTTPS redirect
+- SSL/TLS 1.2 and 1.3 support
+- Security headers
+- Proxy to FastAPI app
 
-```bash
-nano /opt/ace-checkin/nginx/conf.d/default.conf
-```
+The `docker-compose.prod.yml` automatically mounts this file. No manual editing required!
 
-Uncomment and update the HTTPS section:
-
-```nginx
-# Redirect HTTP to HTTPS
-server {
-    listen 80;
-    server_name yourdomain.com www.yourdomain.com;
-    return 301 https://$host$request_uri;
-}
-
-# HTTPS server
-server {
-    listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
-
-    ssl_certificate /etc/nginx/ssl/cert.pem;
-    ssl_certificate_key /etc/nginx/ssl/key.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    # ... rest of configuration
-}
-```
+If you need to customize, edit `nginx/conf.d/production.conf` before starting the containers.
 
 ## Step 8: Start the Application
 
@@ -188,7 +167,7 @@ docker compose -f docker-compose.prod.yml logs app
 docker compose -f docker-compose.prod.yml exec app alembic upgrade head
 
 # Verify database connection
-docker compose -f docker-compose.prod.yml exec app python3 -c "from app.database import engine; engine.connect(); print('Database connected!')"
+docker compose -f docker-compose.prod.yml exec app python3 -c "from app.database import engine; engine.connect(); print('Database connected')"
 
 # Create a test member
 docker compose -f docker-compose.prod.yml exec app python3 << 'EOF'
@@ -257,11 +236,11 @@ docker compose -f docker-compose.prod.yml logs > app_logs.txt
 # Install UFW (if not already installed)
 apt-get install -y ufw
 
-# Enable firewall
-ufw enable
-
 # Allow SSH (IMPORTANT: do this before enabling firewall!)
 ufw allow 22/tcp
+
+# Enable firewall
+ufw enable
 
 # Allow HTTP and HTTPS
 ufw allow 80/tcp
@@ -287,13 +266,13 @@ cat /etc/cron.d/letsencrypt
 
 ```bash
 # Test health endpoint
-curl https://yourdomain.com/health
+curl https://acecheckin.com/health
 
 # Test API documentation
-# Visit: https://yourdomain.com/docs
+# Visit: https://acecheckin.com/docs
 
 # Create a test member
-curl -X POST https://yourdomain.com/api/members \
+curl -X POST https://acecheckin.com/api/members \
   -H "Content-Type: application/json" \
   -d '{
     "member_id": "MEMBER001",
@@ -302,7 +281,7 @@ curl -X POST https://yourdomain.com/api/members \
   }'
 
 # Test entry check-in
-curl -X POST https://yourdomain.com/api/entry \
+curl -X POST https://acecheckin.com/api/entry \
   -H "Content-Type: application/json" \
   -d '{
     "member_id": "MEMBER001",
@@ -368,14 +347,14 @@ ps aux | grep docker
 
 ```bash
 # Check certificate validity
-openssl s_client -connect yourdomain.com:443
+openssl s_client -connect acecheckin.com:443
 
 # Renew certificate manually
 certbot renew --force-renewal
 
 # Copy to Docker volume
-cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem /opt/ace-checkin/server/nginx/ssl/cert.pem
-cp /etc/letsencrypt/live/yourdomain.com/privkey.pem /opt/ace-checkin/server/nginx/ssl/key.pem
+cp /etc/letsencrypt/live/acecheckin.com/fullchain.pem /opt/ace-checkin/server/nginx/ssl/cert.pem
+cp /etc/letsencrypt/live/acecheckin.com/privkey.pem /opt/ace-checkin/server/nginx/ssl/key.pem
 
 # Restart Nginx
 cd /opt/ace-checkin/server
